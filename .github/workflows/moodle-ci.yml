@@ -231,8 +231,20 @@ jobs:
           ref: ${{ matrix.opencast || inputs.branch-opencast-docker-default }}
           path: opencast-docker
 
+      - name: Find Opencast docker-compose file
+        id: find_compose
+        run: |
+         if [ -f opencast-docker/docker-compose/docker-compose.allinone.h2.yml ]; then
+          echo "compose_file=opencast-docker/docker-compose/docker-compose.allinone.h2.yml" >> $GITHUB_ENV
+         elif [ -f opencast-docker/compose/compose.allinone.h2.yaml ]; then
+          echo "compose_file=opencast-docker/compose/compose.allinone.h2.yaml" >> $GITHUB_ENV
+         else
+          echo "No compose file found!"
+          exit 1
+         fi
+
       - name: Start Opencast
-        run: docker compose -p opencast-allinone -f opencast-docker/docker-compose/docker-compose.allinone.h2.yml up -d
+        run: docker compose -p opencast-allinone -f "$compose_file" up -d
 
       - name: Check out repository code
         uses: actions/checkout@v4
