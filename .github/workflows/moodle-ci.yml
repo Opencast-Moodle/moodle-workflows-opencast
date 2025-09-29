@@ -42,7 +42,7 @@ on:
         type: string
       branch-opencast-docker-default:
         description: 'Default opencast docker branch to control the Opencast version, in case it is not provided.'
-        default: '16.7' # As of Dec. 2024 the plugins are OC 16 compatible
+        default: '17.8' # As of Sep. 2025 the plugins are OC 17 compatible
         required: false
         type: string
 
