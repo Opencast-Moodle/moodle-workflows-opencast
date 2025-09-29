@@ -45,7 +45,7 @@ try {
             "php": mainPhp,
             "moodle-branch": mainMoodle,
             "database": db,
-            "opencast:": mainOc
+            "opencast": mainOc
         })
     }
 
@@ -56,7 +56,7 @@ try {
             "php": mainPhp,
             "moodle-branch": mainMoodle,
             "database": mainDb,
-            "opencast:": oc
+            "opencast": oc
         });
     }
 
