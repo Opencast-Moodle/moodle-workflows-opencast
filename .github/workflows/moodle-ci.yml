@@ -171,8 +171,7 @@ jobs:
 
       - name: Install h5p plugin
         if: ${{ inputs.requires-hvp-plugin == true }}
-        run: 
-          moodle-plugin-ci add-plugin --branch "${branch_hvp_plugin}" h5p/moodle-mod_hvp &&
+        run: moodle-plugin-ci add-plugin --branch "${branch_hvp_plugin}" h5p/moodle-mod_hvp &&
           cd moodle-plugin-ci-plugins/moodle-mod_hvp && git submodule update --init && cd ../..
           
       - name: Install moodle-plugin-ci
@@ -318,7 +317,8 @@ jobs:
 
       - name: Install h5p plugin
         if: ${{ inputs.requires-hvp-plugin == true }}
-        run: moodle-plugin-ci add-plugin --branch "${branch_hvp_plugin}" h5p/moodle-mod_hvp
+        run: moodle-plugin-ci add-plugin --branch "${branch_hvp_plugin}" h5p/moodle-mod_hvp &&
+          cd moodle-plugin-ci-plugins/moodle-mod_hvp && git submodule update --init && cd ../..
 
       - name: Install moodle-plugin-ci
         run: |
