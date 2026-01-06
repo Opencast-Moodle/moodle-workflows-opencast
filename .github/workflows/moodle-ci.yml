@@ -40,6 +40,16 @@ on:
         default: 'main'
         required: false
         type: string
+      requires-hvp-plugin:
+        description: 'Specifies whether the h5p plugin is required.'
+        default: false
+        required: false
+        type: boolean
+      branch-hvp-plugin:
+        description: 'Specifies the branch of the h5p plugin.'
+        default: 'stable'
+        required: false
+        type: string
       branch-opencast-docker-default:
         description: 'Default opencast docker branch to control the Opencast version, in case it is not provided.'
         default: '17.8' # As of Sep. 2025 the plugins are OC 17 compatible
@@ -53,6 +63,7 @@ env:
   branch_tool_plugin: ${{ inputs.branch-tool-plugin || (github.head_ref || github.ref_name) }}
   branch_mod_plugin: ${{ inputs.branch-mod-plugin || (github.head_ref || github.ref_name) }}
   branch_block_plugin: ${{ inputs.branch-block-plugin || (github.head_ref || github.ref_name) }}
+  branch_hvp_plugin: ${{ inputs.branch-hvp-plugin || (github.head_ref || github.ref_name) }}
   is_moodle_plugin_ci_workflow: 1
 
 ########################################################################################################################
@@ -158,8 +169,15 @@ jobs:
         if: ${{ inputs.requires-block-plugin == true }}
         run: moodle-plugin-ci add-plugin --branch "${branch_block_plugin}" Opencast-Moodle/moodle-block_opencast
 
+        # moodle-plugin-ci add-plugin --branch "${branch_hvp_plugin}" h5p/moodle-mod_hvp &&
+      - name: Install h5p plugin
+        if: ${{ inputs.requires-hvp-plugin == true }}
+        run: moodle-plugin-ci add-plugin --branch issue-578 ferishili/moodle-mod_hvp &&
+          cd moodle-plugin-ci-plugins/moodle-mod_hvp && git submodule update --init && cd ../..
+          
       - name: Install moodle-plugin-ci
-        run: moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1 --no-init
+        run: moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1 --no-init &&
+          moodle-plugin-ci add-config '$CFG->behat_increasetimeout = 2;'
         env:
           DB: ${{ matrix.database }}
           MOODLE_BRANCH: ${{ matrix.moodle-branch }}
@@ -297,6 +315,11 @@ jobs:
       - name: Install block plugin
         if: ${{ inputs.requires-block-plugin == true }}
         run: moodle-plugin-ci add-plugin --branch "${branch_block_plugin}" Opencast-Moodle/moodle-block_opencast
+
+      - name: Install h5p plugin
+        if: ${{ inputs.requires-hvp-plugin == true }}
+        run: moodle-plugin-ci add-plugin --branch issue-578 ferishili/moodle-mod_hvp &&
+          cd moodle-plugin-ci-plugins/moodle-mod_hvp && git submodule update --init && cd ../..
 
       - name: Install moodle-plugin-ci
         run: |
