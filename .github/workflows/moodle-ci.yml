@@ -251,7 +251,7 @@ jobs:
 
       - name: Start PostgreSQL
         if: matrix.database == 'pgsql'
-        run: docker run -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_HOST_AUTH_METHOD=trust -d postgres:14
+        run: docker run -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_HOST_AUTH_METHOD=trust -d postgres:16
 
       - name: Start MySQL
         if: matrix.database == 'mysqli'
