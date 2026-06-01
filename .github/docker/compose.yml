@@ -1,0 +1,79 @@
+services:
+  opensearch:
+    image: opencast/opensearch:1
+    build:
+      dockerfile_inline: |
+        FROM docker.io/opensearchproject/opensearch:1
+        RUN bin/opensearch-plugin install analysis-icu
+    ports:
+      - "9200:9200"
+    environment:
+      discovery.type: single-node
+      bootstrap.memory_lock: 'true'
+      OPENSEARCH_JAVA_OPTS: -Xms128m -Xmx512m
+      DISABLE_INSTALL_DEMO_CONFIG: 'true'
+      DISABLE_SECURITY_PLUGIN: 'true'
+    volumes:
+      - opencast_opensearch:/usr/share/opensearch/data
+
+  opencast:
+    image: quay.io/opencast/allinone:19
+    environment:
+      ORG_OPENCASTPROJECT_SERVER_URL: http://localhost:8080
+      ORG_OPENCASTPROJECT_DOWNLOAD_URL: http://localhost:8080/static
+      ORG_OPENCASTPROJECT_SECURITY_ADMIN_USER: admin
+      ORG_OPENCASTPROJECT_SECURITY_ADMIN_PASS: opencast
+      ORG_OPENCASTPROJECT_SECURITY_DIGEST_USER: opencast_system_account
+      ORG_OPENCASTPROJECT_SECURITY_DIGEST_PASS: CHANGE_ME
+      PROP_ORG_OPENCASTPROJECT_ENGAGE_UI_URL: http://localhost:8081
+      ELASTICSEARCH_SERVER_HOST: opensearch
+    volumes:
+      - opencast_data:/data
+      - ./services/opencast/etc:/etc/opencast
+    # Added for the upload service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/info/me.json"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    depends_on:
+      - opensearch
+
+  opencast_nginx:
+    image: docker.io/library/nginx:1.29-alpine
+    ports:
+      - "8081:8081"
+      - "8080:80"
+    volumes:
+      - ./services/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./services/nginx/jwks.json:/var/www/html/.well-known/jwks.json:ro
+    depends_on:
+      - opencast
+
+  opencast_upload:
+    build: ./services/upload
+    depends_on:
+      opencast:
+        condition: service_healthy
+      opencast_nginx:
+        condition: service_started
+
+
+  opencast_octoka:
+    image: ghcr.io/opencast/octoka
+    user: root
+    restart: on-failure
+    volumes:
+      - opencast_data:/data
+      - ./services/octoka/config.toml:/etc/octoka/config.toml
+      - octoka_logs:/var/log/octoka
+      - ./services/nginx/jwks.json:/etc/octoka/jwks.json:ro
+    command: ['run']
+    depends_on:
+      - opencast
+
+volumes:
+  opencast_opensearch: {}
+  opencast_data: {}
+  octoka_logs: {}
