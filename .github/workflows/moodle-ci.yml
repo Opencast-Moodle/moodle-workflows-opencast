@@ -66,8 +66,13 @@ on:
         required: false
         type: string
       perform-jwt-tests:
-        description: 'Whether to include the jwt tests with specific real Opencast instance that is JWT ready!'
+        description: 'Specifies whether to perform JWT tests with specific Opencast JWT instance.'
         default: false
+        required: false
+        type: boolean
+      perform-legacy-tests:
+        description: 'Specifies whether to perform legacy tests. By default it is always true!'
+        default: true
         required: false
         type: boolean
 
@@ -244,7 +249,7 @@ jobs:
     needs:
       - setup_jobs
       - static
-    if: ${{ needs.setup_jobs.outputs.has_tests == 'true' }}
+    if: ${{ needs.setup_jobs.outputs.has_tests == 'true' && inputs.perform-legacy-tests == true }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.setup_jobs.outputs.test_matrix) }}
@@ -412,7 +417,7 @@ jobs:
         run: docker run -p 3306:3306 -e MYSQL_ALLOW_EMPTY_PASSWORD=true -d mysql:8.4.5
 
       - name: Start local JWT-Ready Opencast containers
-        working-directory: ./.github/docker
+        working-directory: .github/docker
         run: docker compose up --wait --build
 
       - name: Check out repository code
