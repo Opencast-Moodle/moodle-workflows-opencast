@@ -416,14 +416,14 @@ jobs:
         if: matrix.database == 'mysqli'
         run: docker run -p 3306:3306 -e MYSQL_ALLOW_EMPTY_PASSWORD=true -d mysql:8.4.5
 
-      - name: Start local JWT-Ready Opencast containers
-        working-directory: ${{ github.workspace }}/.github/docker
-        run: docker compose up --wait --build
-
       - name: Check out repository code
         uses: actions/checkout@v4
         with:
           path: plugin
+
+      - name: Start local JWT-Ready Opencast containers
+        working-directory: plugin/.github/docker
+        run: docker compose up --wait --build
 
       - name: Setup PHP ${{ matrix.php }}
         uses: shivammathur/setup-php@v2
