@@ -40,25 +40,11 @@ services:
     depends_on:
       - opensearch
 
-  opencast_nginx:
-    image: docker.io/library/nginx:1.29-alpine
-    ports:
-      - "8081:8081"
-      - "8080:80"
-    volumes:
-      - ./services/nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ./services/nginx/jwks.json:/var/www/html/.well-known/jwks.json:ro
-    depends_on:
-      - opencast
-
   opencast_upload:
     build: ./services/upload
     depends_on:
       opencast:
         condition: service_healthy
-      opencast_nginx:
-        condition: service_started
-
 
   opencast_octoka:
     image: ghcr.io/opencast/octoka
@@ -71,7 +57,22 @@ services:
       - ./services/nginx/jwks.json:/etc/octoka/jwks.json:ro
     command: ['run']
     depends_on:
-      - opencast
+      opencast_upload:
+        condition: service_completed_successfully
+
+  opencast_nginx:
+    image: docker.io/library/nginx:1.29-alpine
+    ports:
+      - "8081:8081"
+      - "8080:80"
+    volumes:
+      - ./services/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./services/nginx/jwks.json:/var/www/html/.well-known/jwks.json:ro
+    depends_on:
+      opencast:
+        condition: service_healthy
+      opencast_octoka:
+        condition: service_started
 
 volumes:
   opencast_opensearch: {}
