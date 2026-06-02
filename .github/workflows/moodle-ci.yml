@@ -367,18 +367,7 @@ jobs:
 
       - name: Behat features
         if: ${{ always() }}
-        run: |
-          moodle-plugin-ci behat --auto-rerun 1 --tags="~@opencast_jwt_test" > behat_jwt.log 2>&1 || {
-            if grep -q "No specifications found at path" behat_jwt.log; then
-              echo "⚠️ No JWT features found to execute. Skipping gracefully."
-              cat behat_jwt.log
-              exit 0
-            else
-              echo "❌ Behat failed due to an actual test failure!"
-              cat behat_jwt.log
-              exit 1
-            fi
-          }
+        run: moodle-plugin-ci behat --auto-rerun 1 --tags="~@opencast_jwt_test"
 
       # This step allows to upload Behat faildump (screenshots) as workflow artifact,
       # so it can be downloaded and inspected. You don't need this step if you
