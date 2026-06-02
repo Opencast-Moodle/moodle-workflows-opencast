@@ -136,7 +136,7 @@ jobs:
           echo "Clean component name calculated: $CLEAN_NAME"
           MAIN_TAG="@$CLEAN_NAME"
           echo "Main behat tag: $MAIN_TAG"
-          echo "main_tag=$MAIN_TAG" >> $GITHUB_ENV
+          echo "main_tag=$MAIN_TAG" >> $GITHUB_OUTPUT
 
   static:
     needs: setup_jobs
