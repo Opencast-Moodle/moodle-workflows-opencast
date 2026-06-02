@@ -97,6 +97,7 @@ jobs:
       test_matrix: ${{ steps.calc-matrix.outputs.test_matrix }}
       moodle_ci_version: ${{ steps.calc-matrix.outputs.moodle_plugin_ci }}
       has_tests: ${{ steps.config.outputs.has_tests }}
+      main_behat_tag: ${{ steps.bahat-tag.outputs.main_tag }}
 
     steps:
       - name: Check out repository code
@@ -125,6 +126,16 @@ jobs:
         uses: Opencast-Moodle/moodle-workflows-opencast/parse-matrix-action@main
         with:
           input: ${{ steps.config.outputs.content }}
+
+      - name: Extract behat main tag
+        id: behat-tag
+        run: |
+          FULL_REPO_NAME="${{ github.event.repository.name }}"
+          echo "Processing repository name: $FULL_REPO_NAME"
+          CLEAN_NAME=$(echo "$FULL_REPO_NAME" | sed 's/^moodle-//g')
+          echo "Clean component name calculated: $CLEAN_NAME"
+          CORE_TAG="@$CLEAN_NAME"
+          echo "main_tag=$CORE_TAG" >> $GITHUB_ENV
 
   static:
     needs: setup_jobs
@@ -367,7 +378,18 @@ jobs:
 
       - name: Behat features
         if: ${{ always() }}
-        run: moodle-plugin-ci behat --auto-rerun 1 --tags="~@opencast_jwt_test"
+        run: |
+          moodle-plugin-ci behat --auto-rerun 1 --tags="${{ needs.setup_jobs.outputs.main_behat_tag }}&&~@opencast_jwt_test" behat_jwt.log 2>&1 || {
+            if grep -q "No specifications found at path" behat_jwt.log; then
+              echo "⚠️ No JWT features found to execute. Skipping gracefully."
+              cat behat_jwt.log
+              exit 0
+            else
+              echo "❌ Behat failed due to an actual test failure!"
+              cat behat_jwt.log
+              exit 1
+            fi
+          }
 
       # This step allows to upload Behat faildump (screenshots) as workflow artifact,
       # so it can be downloaded and inspected. You don't need this step if you
@@ -495,7 +517,7 @@ jobs:
       - name: Behat features
         if: ${{ always() }}
         run: |
-          moodle-plugin-ci behat --auto-rerun 1 --tags="@opencast_jwt_test" > behat_jwt.log 2>&1 || {
+          moodle-plugin-ci behat --auto-rerun 1 --tags="${{ needs.setup_jobs.outputs.main_behat_tag }}&&@opencast_jwt_test" > behat_jwt.log 2>&1 || {
             if grep -q "No specifications found at path" behat_jwt.log; then
               echo "⚠️ No JWT features found to execute. Skipping gracefully."
               cat behat_jwt.log
