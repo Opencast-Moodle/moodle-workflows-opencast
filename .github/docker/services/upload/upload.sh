@@ -13,6 +13,17 @@ until curl -s -f -u "${USER}:${PASSWORD}" "${HOST}/info/me.json" > /dev/null; do
 done
 echo "Opencast is ready! Proceeding with ingest..."
 
+echo "Creating JWT unknown user..."
+
+curl -s -u "${USER}:${PASSWORD}" "${HOST}/admin-ng/users/" \
+    -F username='unknown-jwt-user' \
+    -F password='unknown-jwt-user' \
+    -F name='unknown-jwt-user' \
+    -F email='no-mail@jwt.invalid' \
+    -F roles='[{'name': 'ROLE_STUDIO', 'type': 'INTERNAL'}, {'name': 'ROLE_EDITOR', 'type': 'INTERNAL'}, {'name': 'ROLE_USER_UNKNOWN_JWT_USER', 'type': 'INTERNAL'}, {'name': 'ROLE_USER', 'type': 'INTERNAL'}, {'name': 'ROLE_JWT_USER', 'type': 'INTERNAL'}]'
+
+echo "JWT unknown user created!"
+
 NOW=$(date +%s)
 
 STARTDATE=$(date -u -d "@$((NOW))" +%Y-%m-%d)
