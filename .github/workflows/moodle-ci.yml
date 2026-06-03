@@ -65,6 +65,16 @@ on:
         default: 'main'
         required: false
         type: string
+      perform-jwt-tests:
+        description: 'Specifies whether to perform JWT tests with specific Opencast JWT instance.'
+        default: false
+        required: false
+        type: boolean
+      perform-legacy-tests:
+        description: 'Specifies whether to perform legacy tests. By default it is always true!'
+        default: true
+        required: false
+        type: boolean
 
 ########################################################################################################################
 
@@ -87,6 +97,7 @@ jobs:
       test_matrix: ${{ steps.calc-matrix.outputs.test_matrix }}
       moodle_ci_version: ${{ steps.calc-matrix.outputs.moodle_plugin_ci }}
       has_tests: ${{ steps.config.outputs.has_tests }}
+      main_behat_tag: ${{ steps.behattag.outputs.main_tag }}
 
     steps:
       - name: Check out repository code
@@ -115,6 +126,17 @@ jobs:
         uses: Opencast-Moodle/moodle-workflows-opencast/parse-matrix-action@main
         with:
           input: ${{ steps.config.outputs.content }}
+
+      - name: Extract behat main tag
+        id: behattag
+        run: |
+          FULL_REPO_NAME="${{ github.event.repository.name }}"
+          echo "Processing repository name: $FULL_REPO_NAME"
+          CLEAN_NAME=$(echo "$FULL_REPO_NAME" | sed 's/^moodle-//g')
+          echo "Clean component name calculated: $CLEAN_NAME"
+          MAIN_TAG="@$CLEAN_NAME"
+          echo "Main behat tag: $MAIN_TAG"
+          echo "main_tag=$MAIN_TAG" >> $GITHUB_OUTPUT
 
   static:
     needs: setup_jobs
@@ -185,11 +207,11 @@ jobs:
         if: ${{ inputs.requires-hvp-plugin == true }}
         run: moodle-plugin-ci add-plugin --branch issue-578 ferishili/moodle-mod_hvp &&
           cd moodle-plugin-ci-plugins/moodle-mod_hvp && git submodule update --init && cd ../..
-          
+
       - name: Install Lifecycle plugin
         if: ${{ inputs.requires-lifecycle-plugin == true }}
         run: moodle-plugin-ci add-plugin --branch "${branch_lifecycle_plugin}" learnweb/moodle-tool_lifecycle
-          
+
       - name: Install moodle-plugin-ci
         run: moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1 --no-init &&
           moodle-plugin-ci add-config '$CFG->behat_increasetimeout = 2;'
@@ -239,7 +261,7 @@ jobs:
     needs:
       - setup_jobs
       - static
-    if: ${{ needs.setup_jobs.outputs.has_tests == 'true' }}
+    if: ${{ needs.setup_jobs.outputs.has_tests == 'true' && inputs.perform-legacy-tests == true }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.setup_jobs.outputs.test_matrix) }}
@@ -352,10 +374,23 @@ jobs:
       - name: PHPUnit tests
         if: ${{ always() }}
         run: moodle-plugin-ci phpunit
+        env:
+          TEST_TYPE: legacy
 
       - name: Behat features
         if: ${{ always() }}
-        run: moodle-plugin-ci behat --auto-rerun 1
+        run: |
+          moodle-plugin-ci behat --auto-rerun 1 --tags="${{ needs.setup_jobs.outputs.main_behat_tag }}&&~@opencast_jwt_test" > behat_jwt.log 2>&1 || {
+            if grep -q "No specifications found at path" behat_jwt.log; then
+              echo "⚠️ No JWT features found to execute. Skipping gracefully."
+              cat behat_jwt.log
+              exit 0
+            else
+              echo "❌ Behat failed due to an actual test failure!"
+              cat behat_jwt.log
+              exit 1
+            fi
+          }
 
       # This step allows to upload Behat faildump (screenshots) as workflow artifact,
       # so it can be downloaded and inspected. You don't need this step if you
@@ -368,3 +403,130 @@ jobs:
           path: ${{ github.workspace }}/moodledata/behat_dump
           retention-days: 7
           if-no-files-found: ignore
+
+  ######################################################################################################################
+
+  test-jwt:
+    runs-on: ubuntu-latest
+    needs:
+      - setup_jobs
+      - static
+    if: ${{ inputs.perform-jwt-tests == true }}
+    strategy:
+      matrix: ${{ fromJSON(needs.setup_jobs.outputs.static_matrix) }}
+
+    steps:
+      - name: Start MariaDB
+        if: matrix.database == 'mariadb'
+        run: docker run -p 3306:3306 -e MYSQL_USER=root -e MYSQL_ALLOW_EMPTY_PASSWORD=true -d mariadb:10
+
+      - name: Start PostgreSQL
+        if: matrix.database == 'pgsql'
+        run: docker run -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_HOST_AUTH_METHOD=trust -d postgres:16
+
+      - name: Start MySQL
+        if: matrix.database == 'mysqli'
+        run: docker run -p 3306:3306 -e MYSQL_ALLOW_EMPTY_PASSWORD=true -d mysql:8.4.5
+
+      - name: Checkout Centralized Workflows Repo (For Docker Setup)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: centralized-shared-resources
+
+      - name: Start local JWT-Ready Opencast containers
+        working-directory: centralized-shared-resources/.github/docker
+        run: docker compose up --wait --build
+
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - name: Setup PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          ini-values: max_input_vars=5000
+          coverage: none
+
+      - name: Get composer cache directory
+        id: composer-cache
+        run: echo "dir=$(cd /home/runner/.composer && composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Composer cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-test-${{ matrix.php }}-${{ matrix.moodle-branch }}-${{ matrix.database }}-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-test-${{ matrix.php }}-${{ matrix.moodle-branch }}-${{ matrix.database }}-${{ hashFiles('**/composer.lock') }}
+
+      - name: npm cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-test-${{ matrix.php }}-${{ matrix.moodle-branch }}-${{ matrix.database }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-test-${{ matrix.php }}-${{ matrix.moodle-branch }}-${{ matrix.database }}-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Initialise moodle-plugin-ci
+        run: |
+          composer create-project -n --no-dev --prefer-dist moodlehq/moodle-plugin-ci ci ${{ needs.setup_jobs.outputs.moodle_ci_version }}
+          echo $(cd ci/bin; pwd) >> $GITHUB_PATH
+          echo $(cd ci/vendor/bin; pwd) >> $GITHUB_PATH
+          sudo locale-gen en_AU.UTF-8
+          echo "NVM_DIR=$HOME/.nvm" >> $GITHUB_ENV
+
+      - name: Install tool plugin
+        if: ${{ inputs.requires-tool-plugin == true }}
+        run: moodle-plugin-ci add-plugin --branch "${branch_tool_plugin}" Opencast-Moodle/moodle-tool_opencast
+
+      - name: Install activity plugin
+        if: ${{ inputs.requires-mod-plugin == true }}
+        run: moodle-plugin-ci add-plugin --branch "${branch_mod_plugin}" Opencast-Moodle/moodle-mod_opencast
+
+      - name: Install block plugin
+        if: ${{ inputs.requires-block-plugin == true }}
+        run: moodle-plugin-ci add-plugin --branch "${branch_block_plugin}" Opencast-Moodle/moodle-block_opencast
+
+      - name: Install h5p plugin
+        if: ${{ inputs.requires-hvp-plugin == true }}
+        run: moodle-plugin-ci add-plugin --branch issue-578 ferishili/moodle-mod_hvp &&
+          cd moodle-plugin-ci-plugins/moodle-mod_hvp && git submodule update --init && cd ../..
+
+      - name: Install Lifecycle plugin
+        if: ${{ inputs.requires-lifecycle-plugin == true }}
+        run: moodle-plugin-ci add-plugin --branch "${branch_lifecycle_plugin}" learnweb/moodle-tool_lifecycle
+
+      - name: Install moodle-plugin-ci
+        run: |
+          moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1
+          # Set behat timeout (is multiplied with 10 seconds).
+          moodle-plugin-ci add-config '$CFG->behat_increasetimeout = 6;'
+        env:
+          DB: ${{ matrix.database }}
+          MOODLE_BRANCH: ${{ matrix.moodle-branch }}
+
+      - name: PHPUnit tests
+        if: ${{ always() }}
+        run: moodle-plugin-ci phpunit
+        env:
+          TEST_TYPE: jwt
+
+      - name: Behat features
+        if: ${{ always() }}
+        run: |
+          moodle-plugin-ci behat --auto-rerun 1 --tags="${{ needs.setup_jobs.outputs.main_behat_tag }}&&@opencast_jwt_test" > behat_jwt.log 2>&1 || {
+            if grep -q "No specifications found at path" behat_jwt.log; then
+              echo "⚠️ No JWT features found to execute. Skipping gracefully."
+              cat behat_jwt.log
+              exit 0
+            else
+              echo "❌ Behat failed due to an actual test failure!"
+              cat behat_jwt.log
+              exit 1
+            fi
+          }
+
